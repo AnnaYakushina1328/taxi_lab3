@@ -4,238 +4,230 @@
 
 ## Общая информация
 
-В рамках лабораторной работы для системы заказа такси были проанализированы наиболее частые запросы и созданы индексы для ускорения их выполнения.
+В рамках лабораторной работы была спроектирована реляционная база данных PostgreSQL для системы заказа такси.  
+В финальной реализации используются три основные таблицы:
 
-К часто используемым операциям относятся:
+- `users` — пользователи сервиса;
+- `drivers` — водители;
+- `rides` — поездки.
+
+Так как REST API из лабораторной работы 02 был подключён к PostgreSQL, при проектировании схемы базы данных были добавлены индексы для тех операций, которые чаще всего используются в API:
 
 - поиск пользователя по логину;
-- поиск пользователя по имени;
-- выборка доступных водителей;
-- получение активных заказов;
+- поиск пользователя по маске имени;
+- регистрация и получение информации о водителе;
+- получение активных поездок;
 - получение истории поездок пользователя;
-- поиск платежей по заказу.
-
-## Созданные индексы и их назначение
-
-### Индексы таблицы `users`
-
-```sql
-CREATE INDEX idx_users_login ON users(login);
-CREATE INDEX idx_users_full_name ON users(full_name);
-CREATE INDEX idx_users_created_at ON users(created_at);
-```
-
-Назначение:
-
-- `idx_users_login` ускоряет поиск пользователя по логину;
-- `idx_users_full_name` ускоряет поиск пользователя по полному имени;
-- `idx_users_created_at` полезен для выборок и сортировок по времени создания.
-
-### Индексы таблицы `drivers`
-
-```sql
-CREATE INDEX idx_drivers_user_id ON drivers(user_id);
-CREATE INDEX idx_drivers_status ON drivers(status);
-CREATE INDEX idx_drivers_rating ON drivers(rating DESC);
-CREATE INDEX idx_drivers_location ON drivers(current_lat, current_lng) WHERE status = 'online';
-```
-
-Назначение:
-
-- `idx_drivers_user_id` ускоряет связь водителя с пользователем;
-- `idx_drivers_status` ускоряет выборку доступных водителей;
-- `idx_drivers_rating` полезен при сортировке по рейтингу;
-- `idx_drivers_location` предназначен для поиска ближайших водителей среди тех, кто сейчас онлайн.
-
-### Индексы таблицы `orders`
-
-```sql
-CREATE INDEX idx_orders_passenger_id ON orders(passenger_id);
-CREATE INDEX idx_orders_driver_id ON orders(driver_id);
-CREATE INDEX idx_orders_status ON orders(status);
-CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
-CREATE INDEX idx_orders_status_created ON orders(status, created_at DESC);
-CREATE INDEX idx_orders_passenger_status ON orders(passenger_id, status);
-```
-
-Назначение:
-
-- `idx_orders_passenger_id` ускоряет получение истории поездок пользователя;
-- `idx_orders_driver_id` ускоряет выборку заказов водителя;
-- `idx_orders_status` ускоряет поиск активных заказов;
-- `idx_orders_created_at` полезен для сортировки заказов по времени;
-- `idx_orders_status_created` полезен для выборок активных заказов с сортировкой по времени;
-- `idx_orders_passenger_status` ускоряет выборку заказов конкретного пользователя по статусу.
-
-### Индексы таблицы `payments`
-
-```sql
-CREATE INDEX idx_payments_order_id ON payments(order_id);
-CREATE INDEX idx_payments_status ON payments(status);
-CREATE INDEX idx_payments_created_at ON payments(created_at DESC);
-```
-
-Назначение:
-
-- `idx_payments_order_id` ускоряет поиск платежа по заказу;
-- `idx_payments_status` полезен для выборки платежей по статусу;
-- `idx_payments_created_at` ускоряет сортировку платежей по времени.
-
-### Индексы таблицы `reviews`
-
-```sql
-CREATE INDEX idx_reviews_order_id ON reviews(order_id);
-CREATE INDEX idx_reviews_driver_id ON reviews(driver_id);
-CREATE INDEX idx_reviews_passenger_id ON reviews(passenger_id);
-```
-
-Назначение:
-
-- ускоряют выборки отзывов по заказу, водителю и пассажиру.
+- принятие и завершение поездки.
 
 ---
 
-## Анализ запросов с помощью EXPLAIN ANALYZE
+## Созданные индексы
+
+### Таблица `users`
+
+В таблице `users` логин пользователя должен быть уникальным:
+
+```sql
+UNIQUE (login)
+```
+
+Это ограничение автоматически создаёт индекс по полю `login`.  
+Он используется для:
+
+- поиска пользователя по логину;
+- проверки уникальности логина при регистрации;
+- авторизации пользователя.
+
+Также для поиска пользователя по части имени был создан trigram-индекс:
+
+```sql
+CREATE INDEX idx_users_full_name_trgm
+    ON users USING GIN (lower(full_name) gin_trgm_ops);
+```
+
+Этот индекс нужен для ускорения запросов вида:
+
+```sql
+WHERE lower(full_name) LIKE '%' || lower($1) || '%'
+```
+
+### Таблица `drivers`
+
+В таблице `drivers` автоматически создаются индексы по уникальным ограничениям:
+
+```sql
+UNIQUE (user_id)
+UNIQUE (car_number)
+UNIQUE (license_number)
+```
+
+Дополнительно были созданы индексы:
+
+```sql
+CREATE INDEX idx_drivers_status ON drivers(status);
+CREATE INDEX idx_drivers_user_id ON drivers(user_id);
+```
+
+Назначение индексов:
+
+- `idx_drivers_status` ускоряет выборку водителей по статусу (`online`, `busy`, `offline`);
+- `idx_drivers_user_id` ускоряет поиск водителя по пользователю.
+
+### Таблица `rides`
+
+Для таблицы `rides` были созданы индексы:
+
+```sql
+CREATE INDEX idx_rides_passenger_id ON rides(passenger_id);
+CREATE INDEX idx_rides_driver_id ON rides(driver_id);
+CREATE INDEX idx_rides_status ON rides(status);
+CREATE INDEX idx_rides_passenger_status ON rides(passenger_id, status);
+CREATE INDEX idx_rides_created_at ON rides(created_at DESC);
+```
+
+Назначение индексов:
+
+- `idx_rides_passenger_id` ускоряет получение поездок конкретного пользователя;
+- `idx_rides_driver_id` ускоряет поиск поездок конкретного водителя;
+- `idx_rides_status` ускоряет выборку активных поездок;
+- `idx_rides_passenger_status` полезен для выборки поездок пользователя с фильтрацией по статусу;
+- `idx_rides_created_at` полезен для сортировки поездок по времени создания.
+
+---
+
+## Анализ типовых запросов
+
+Ниже приведены основные запросы, используемые в системе.
 
 ### 1. Поиск пользователя по логину
 
 Запрос:
 
 ```sql
-SELECT id, login, full_name, email, phone, created_at
+SELECT id, login, full_name
 FROM users
-WHERE login = 'passenger1';
+WHERE login = 'test.user';
 ```
 
 Команда для анализа:
 
 ```sql
 EXPLAIN ANALYZE
-SELECT id, login, full_name, email, phone, created_at
+SELECT id, login, full_name
 FROM users
-WHERE login = 'passenger1';
+WHERE login = 'test.user';
 ```
 
-План выполнения:
+Ожидаемое поведение:
 
-```text
-Index Scan using idx_users_login on users  (cost=0.14..8.16 rows=1 width=624) (actual time=0.033..0.033 rows=1 loops=1)
-  Index Cond: ((login)::text = 'passenger1'::text)
-Planning Time: 0.645 ms
-Execution Time: 0.073 ms
-```
+- PostgreSQL должен использовать индекс, созданный ограничением `UNIQUE (login)`;
+- такой запрос должен выполняться без полного сканирования таблицы.
 
 Вывод:
 
-Для данного запроса PostgreSQL использует индекс `idx_users_login`. Это означает, что поиск пользователя по логину выполняется эффективно без полного сканирования таблицы. Такой индекс особенно важен для операций авторизации и проверки существования пользователя.
+Индекс по логину является одним из самых важных в системе, так как он используется при регистрации и авторизации. Поиск пользователя по логину является точечным запросом, поэтому наличие индекса здесь полностью оправдано.
 
----
-
-### 2. Получение активных заказов
+### 2. Получение активных поездок
 
 Запрос:
 
 ```sql
-SELECT *
-FROM active_orders;
+SELECT id, passenger_id, driver_id, pickup_address, destination_address, status
+FROM rides
+WHERE status IN ('searching', 'accepted')
+ORDER BY id;
 ```
 
 Команда для анализа:
 
 ```sql
 EXPLAIN ANALYZE
-SELECT *
-FROM active_orders;
+SELECT id, passenger_id, driver_id, pickup_address, destination_address, status
+FROM rides
+WHERE status IN ('searching', 'accepted')
+ORDER BY id;
 ```
 
-План выполнения:
+Ожидаемое поведение:
 
-```text
-Hash Right Join  (cost=21.86..33.97 rows=4 width=1562) (actual time=0.097..0.101 rows=4 loops=1)
-  Hash Cond: (d.id = o.driver_id)
-  ->  Seq Scan on drivers d  (cost=0.00..11.50 rows=150 width=222) (actual time=0.012..0.013 rows=10 loops=1)
-  ->  Hash  (cost=21.81..21.81 rows=4 width=1344) (actual time=0.069..0.070 rows=4 loops=1)
-        Buckets: 1024  Batches: 1  Memory Usage: 9kB
-        ->  Hash Join  (cost=10.95..21.81 rows=4 width=1344) (actual time=0.059..0.063 rows=4 loops=1)
-              Hash Cond: (u.id = o.passenger_id)
-              ->  Seq Scan on users u  (cost=0.00..10.60 rows=60 width=222) (actual time=0.004..0.005 rows=10 loops=1)
-              ->  Hash  (cost=10.90..10.90 rows=4 width=1126) (actual time=0.033..0.034 rows=4 loops=1)
-                    Buckets: 1024  Batches: 1  Memory Usage: 9kB
-                    ->  Seq Scan on orders o  (cost=0.00..10.90 rows=4 width=1126) (actual time=0.022..0.025 rows=4 loops=1)
-                          Filter: ((status)::text = ANY ('{created,searching,accepted,in_progress}'::text[]))
-                          Rows Removed by Filter: 6
-Planning Time: 1.488 ms
-Execution Time: 0.170 ms
-```
+- при росте объёма данных PostgreSQL должен использовать индекс `idx_rides_status`;
+- на маленьком тестовом наборе данных возможен `Seq Scan`, так как оптимизатор может посчитать последовательное сканирование дешевле.
 
 Вывод:
 
-Для выборки активных заказов PostgreSQL на текущем объёме тестовых данных использует `Seq Scan` по таблице `orders`, а затем выполняет соединения с таблицами `users` и `drivers`. Это нормально, так как в таблицах всего по 10 строк, и для такого малого объёма данных последовательное сканирование оказывается дешевле индексного доступа. При росте количества заказов индексы `idx_orders_status` и `idx_orders_status_created` станут более полезными.
-
----
+Индекс `idx_rides_status` нужен для ускорения выборки активных поездок. Даже если на тестовых данных PostgreSQL иногда выбирает `Seq Scan`, при увеличении числа поездок наличие этого индекса будет давать заметный выигрыш по производительности.
 
 ### 3. Получение истории поездок пользователя
 
 Запрос:
 
 ```sql
-SELECT o.id, o.status, o.pickup_address, o.destination_address,
-       o.final_price, o.created_at, o.completed_at,
-       d.car_model, d.car_number
-FROM orders o
-LEFT JOIN drivers d ON o.driver_id = d.id
-WHERE o.passenger_id = 1
-ORDER BY o.created_at DESC;
+SELECT id, passenger_id, driver_id, pickup_address, destination_address, status
+FROM rides
+WHERE passenger_id = 11
+ORDER BY created_at DESC, id DESC;
 ```
 
 Команда для анализа:
 
 ```sql
 EXPLAIN ANALYZE
-SELECT o.id, o.status, o.pickup_address, o.destination_address,
-       o.final_price, o.created_at, o.completed_at,
-       d.car_model, d.car_number
-FROM orders o
-LEFT JOIN drivers d ON o.driver_id = d.id
-WHERE o.passenger_id = 1
-ORDER BY o.created_at DESC;
+SELECT id, passenger_id, driver_id, pickup_address, destination_address, status
+FROM rides
+WHERE passenger_id = 11
+ORDER BY created_at DESC, id DESC;
 ```
 
-План выполнения:
+Ожидаемое поведение:
 
-```text
-Sort  (cost=16.44..16.44 rows=1 width=1402) (actual time=0.070..0.071 rows=1 loops=1)
-  Sort Key: o.created_at DESC
-  Sort Method: quicksort  Memory: 25kB
-  ->  Nested Loop Left Join  (cost=0.29..16.43 rows=1 width=1402) (actual time=0.054..0.055 rows=1 loops=1)
-        ->  Index Scan using idx_orders_passenger_status on orders o  (cost=0.14..8.16 rows=1 width=1130) (actual time=0.038..0.039 rows=1 loops=1)
-              Index Cond: (passenger_id = 1)
-        ->  Index Scan using drivers_pkey on drivers d  (cost=0.14..8.16 rows=1 width=280) (actual time=0.011..0.011 rows=1 loops=1)
-              Index Cond: (id = o.driver_id)
-Planning Time: 0.199 ms
-Execution Time: 0.096 ms
-```
+- PostgreSQL должен использовать индекс `idx_rides_passenger_id` или составной индекс `idx_rides_passenger_status` в зависимости от оценки стоимости;
+- сортировка по `created_at DESC` может дополнительно использовать индекс `idx_rides_created_at`.
 
 Вывод:
 
-Для данного запроса PostgreSQL использует индекс `idx_orders_passenger_status`, что ускоряет выборку поездок конкретного пользователя. Затем выполняется `Index Scan` по первичному ключу таблицы `drivers`, что также является эффективным способом соединения. Таким образом, получение истории поездок пользователя уже оптимизировано и выполняется без полного сканирования таблицы `orders`.
+Получение истории поездок пользователя — один из ключевых запросов системы. Для него важны индексы по `passenger_id` и по времени создания поездки. Это делает выборку поездок пользователя более эффективной и снижает стоимость сортировки.
+
+### 4. Регистрация и поиск водителя по пользователю
+
+Запрос:
+
+```sql
+SELECT id, user_id, car_model, car_number, license_number, status
+FROM drivers
+WHERE user_id = 11;
+```
+
+Команда для анализа:
+
+```sql
+EXPLAIN ANALYZE
+SELECT id, user_id, car_model, car_number, license_number, status
+FROM drivers
+WHERE user_id = 11;
+```
+
+Ожидаемое поведение:
+
+- PostgreSQL должен использовать индекс по `user_id`, созданный ограничением `UNIQUE (user_id)` или дополнительным индексом `idx_drivers_user_id`.
+
+Вывод:
+
+Поиск водителя по `user_id` необходим после регистрации водителя и при работе API с профилем водителя. Наличие индекса на этом поле делает такую операцию быстрой и предсказуемой.
 
 ---
 
-## Общий вывод по оптимизации
+## Итог по оптимизации
 
-В ходе проектирования базы данных были созданы индексы для наиболее частых и критичных запросов системы заказа такси. Основное внимание было уделено следующим сценариям:
+В ходе проектирования базы данных были созданы индексы для наиболее важных сценариев работы системы заказа такси:
 
-- быстрый поиск пользователя по логину;
-- выборка доступных водителей;
-- получение активных заказов;
+- поиск пользователя по логину;
+- поиск пользователя по имени;
+- выборка водителей по статусу;
+- получение активных поездок;
 - получение истории поездок пользователя;
-- поиск платежей по заказу.
+- поиск водителя по пользователю.
 
-Результаты анализа показали, что:
+На небольшом количестве тестовых данных PostgreSQL не всегда обязан использовать индексы, потому что последовательное сканирование маленькой таблицы может быть дешевле. Это является нормальным поведением оптимизатора.
 
-- индекс `idx_users_login` действительно используется PostgreSQL при поиске пользователя по логину;
-- индекс `idx_orders_passenger_status` используется для получения истории поездок пользователя;
-- для запроса получения активных заказов на небольшом количестве тестовых данных PostgreSQL выбирает `Seq Scan`, так как это дешевле индексного доступа.
-
-Таким образом, оптимизация выполнена обоснованно. База данных подготовлена не только для корректной работы на учебных данных, но и для дальнейшего роста объёма данных, при котором созданные индексы будут давать ещё больший выигрыш по производительности.
+Тем не менее выбранные индексы являются обоснованными и соответствуют основным операциям API. База данных подготовлена не только для корректной работы на учебном наборе данных, но и для дальнейшего роста объёма записей, при котором индексы будут давать больший выигрыш по производительности.
