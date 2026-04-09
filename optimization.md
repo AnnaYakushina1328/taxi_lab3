@@ -103,7 +103,7 @@ CREATE INDEX idx_rides_created_at ON rides(created_at DESC);
 
 ## Анализ типовых запросов
 
-Ниже приведены основные запросы, используемые в системе.
+Ниже приведены реальные планы выполнения `EXPLAIN ANALYZE` для ключевых запросов системы заказа такси.
 
 ### 1. Поиск пользователя по логину
 
@@ -115,23 +115,20 @@ FROM users
 WHERE login = 'test.user';
 ```
 
-Команда для анализа:
+План выполнения:
 
-```sql
-EXPLAIN ANALYZE
-SELECT id, login, full_name
-FROM users
-WHERE login = 'test.user';
+```text
+Index Scan using users_login_key on users  (cost=0.14..8.16 rows=1 width=738) (actual time=0.010..0.011 rows=0 loops=1)
+  Index Cond: ((login)::text = 'test.user'::text)
+Planning Time: 0.383 ms
+Execution Time: 0.050 ms
 ```
-
-Ожидаемое поведение:
-
-- PostgreSQL должен использовать индекс, созданный ограничением `UNIQUE (login)`;
-- такой запрос должен выполняться без полного сканирования таблицы.
 
 Вывод:
 
-Индекс по логину является одним из самых важных в системе, так как он используется при регистрации и авторизации. Поиск пользователя по логину является точечным запросом, поэтому наличие индекса здесь полностью оправдано.
+PostgreSQL использует индекс `users_login_key`, который был автоматически создан ограничением уникальности для поля `login`. Это означает, что поиск пользователя по логину выполняется эффективно без полного сканирования таблицы. В данном запуске найдено `0` строк, однако это не влияет на оценку плана: сам факт использования индексного доступа подтверждает корректность оптимизации.
+
+---
 
 ### 2. Получение активных поездок
 
@@ -144,24 +141,89 @@ WHERE status IN ('searching', 'accepted')
 ORDER BY id;
 ```
 
-Команда для анализа:
+План выполнения:
 
-```sql
-EXPLAIN ANALYZE
-SELECT id, passenger_id, driver_id, pickup_address, destination_address, status
-FROM rides
-WHERE status IN ('searching', 'accepted')
-ORDER BY id;
+```text
+Sort  (cost=10.88..10.89 rows=2 width=1102) (actual time=0.022..0.023 rows=6 loops=1)
+  Sort Key: id
+  Sort Method: quicksort  Memory: 25kB
+  ->  Seq Scan on rides  (cost=0.00..10.88 rows=2 width=1102) (actual time=0.006..0.008 rows=6 loops=1)
+        Filter: ((status)::text = ANY ('{searching,accepted}'::text[]))
+        Rows Removed by Filter: 5
+Planning Time: 0.231 ms
+Execution Time: 0.032 ms
 ```
-
-Ожидаемое поведение:
-
-- при росте объёма данных PostgreSQL должен использовать индекс `idx_rides_status`;
-- на маленьком тестовом наборе данных возможен `Seq Scan`, так как оптимизатор может посчитать последовательное сканирование дешевле.
 
 Вывод:
 
-Индекс `idx_rides_status` нужен для ускорения выборки активных поездок. Даже если на тестовых данных PostgreSQL иногда выбирает `Seq Scan`, при увеличении числа поездок наличие этого индекса будет давать заметный выигрыш по производительности.
+Для выборки активных поездок PostgreSQL использует `Seq Scan` по таблице `rides`, а затем выполняет сортировку по `id`. Это нормально для небольшого тестового набора данных, где в таблице мало строк, и последовательное сканирование оказывается дешевле индексного доступа. При увеличении объёма данных индекс `idx_rides_status` будет становиться более полезным.
+
+---
+
+### 3. Получение истории поездок пользователя
+
+Запрос:
+
+```sql
+SELECT id, passenger_id, driver_id, pickup_address, destination_address, status
+FROM rides
+WHERE passenger_id = 11
+ORDER BY created_at DESC, id DESC;
+```
+
+План выполнения:
+
+```text
+Sort  (cost=8.17..8.18 rows=1 width=1110) (actual time=0.023..0.024 rows=1 loops=1)
+  Sort Key: created_at DESC, id DESC
+  Sort Method: quicksort  Memory: 25kB
+  ->  Index Scan using idx_rides_passenger_status on rides  (cost=0.14..8.16 rows=1 width=1110) (actual time=0.008..0.009 rows=1 loops=1)
+        Index Cond: (passenger_id = 11)
+Planning Time: 0.118 ms
+Execution Time: 0.042 ms
+```
+
+Вывод:
+
+Для получения истории поездок пользователя PostgreSQL использует индекс `idx_rides_passenger_status`. Это подтверждает, что выборка по `passenger_id` уже оптимизирована. После этого выполняется быстрая сортировка по `created_at DESC, id DESC`, что для небольшого числа записей также является нормальным и эффективным поведением.
+
+---
+
+### 4. Поиск водителя по пользователю
+
+Запрос:
+
+```sql
+SELECT id, user_id, car_model, car_number, license_number, status
+FROM drivers
+WHERE user_id = 11;
+```
+
+План выполнения:
+
+```text
+Index Scan using idx_drivers_user_id on drivers  (cost=0.14..8.16 rows=1 width=480) (actual time=0.018..0.019 rows=0 loops=1)
+  Index Cond: (user_id = 11)
+Planning Time: 0.360 ms
+Execution Time: 0.032 ms
+```
+
+Вывод:
+
+Для поиска водителя по `user_id` PostgreSQL использует индекс `idx_drivers_user_id`. Это делает запрос быстрым и избавляет от полного сканирования таблицы `drivers`. В текущем запуске найдено `0` строк, но, как и в случае с поиском пользователя по логину, это не отменяет того, что индекс выбран и используется корректно.
+
+---
+
+## Итог по анализу планов выполнения
+
+Результаты `EXPLAIN ANALYZE` показывают, что оптимизация базы данных выполнена обоснованно:
+
+- для точечных запросов по `login` и `user_id` PostgreSQL использует индексный доступ;
+- для истории поездок пользователя используется индекс `idx_rides_passenger_status`;
+- для активных поездок на малом объёме данных PostgreSQL выбирает `Seq Scan`, что является нормальным поведением оптимизатора;
+- при росте количества записей индексы по `status`, `passenger_id` и другим ключевым полям будут давать ещё больший выигрыш по производительности.
+
+Таким образом, созданные индексы соответствуют основным операциям API и подготавливают систему к дальнейшему увеличению объёма данных.
 
 ### 3. Получение истории поездок пользователя
 
