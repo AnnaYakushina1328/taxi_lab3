@@ -1,71 +1,39 @@
--- =====================================================
--- Тестовые данные для системы заказа такси
--- Вариант 16
--- =====================================================
+BEGIN;
 
--- =====================================================
--- Пользователи (пассажиры)
--- =====================================================
-INSERT INTO users (login, password_hash, full_name, email, phone) VALUES
-('passenger1', 'hash_password_123', 'Иван Иванов', 'ivan@test.ru', '+79991111111'),
-('passenger2', 'hash_password_456', 'Петр Петров', 'petr@test.ru', '+79992222222'),
-('passenger3', 'hash_password_789', 'Анна Сидорова', 'anna@test.ru', '+79993333333'),
-('passenger4', 'hash_password_012', 'Мария Козлова', 'maria@test.ru', '+79994444444'),
-('passenger5', 'hash_password_345', 'Дмитрий Новиков', 'dmitry@test.ru', '+79995555555'),
-('passenger6', 'hash_password_678', 'Елена Морозова', 'elena@test.ru', '+79996666666'),
-('passenger7', 'hash_password_901', 'Алексей Волков', 'alexey@test.ru', '+79997777777'),
-('passenger8', 'hash_password_234', 'Ольга Лебедева', 'olga@test.ru', '+79998888888'),
-('passenger9', 'hash_password_567', 'Сергей Павлов', 'sergey@test.ru', '+79999999999'),
-('passenger10', 'hash_password_890', 'Наталья Семенова', 'natalia@test.ru', '+79990000000');
+INSERT INTO users (login, password, full_name) VALUES
+    ('passenger1', 'pass123', 'Ivan Petrov'),
+    ('passenger2', 'pass123', 'Anna Smirnova'),
+    ('passenger3', 'pass123', 'Elena Ivanova'),
+    ('passenger4', 'pass123', 'Dmitry Sokolov'),
+    ('passenger5', 'pass123', 'Maria Kuznetsova'),
+    ('driveruser1', 'pass123', 'Pavel Popov'),
+    ('driveruser2', 'pass123', 'Olga Lebedeva'),
+    ('driveruser3', 'pass123', 'Sergey Kozlov'),
+    ('driveruser4', 'pass123', 'Natalia Novikova'),
+    ('driveruser5', 'pass123', 'Alexey Morozov');
 
--- =====================================================
--- Водители
--- =====================================================
-INSERT INTO drivers (user_id, car_model, car_number, license_number, rating, status, current_lat, current_lng) VALUES
-(1, 'Toyota Camry', 'А123БВ777', '77AB123456', 4.85, 'online', 55.751244, 37.618423),
-(2, 'Hyundai Solaris', 'В456ГД777', '77CD789012', 4.65, 'online', 55.755826, 37.617300),
-(3, 'Kia Rio', 'Е789ЖЗ777', '77EF345678', 4.90, 'busy', 55.742000, 37.610000),
-(4, 'Volkswagen Polo', 'И012КЛ777', '77GH901234', 4.50, 'online', 55.760000, 37.625000),
-(5, 'Skoda Rapid', 'К345МН777', '77IJ567890', 4.75, 'offline', 55.748000, 37.605000),
-(6, 'Renault Logan', 'М678ОП777', '77KL123456', 4.40, 'online', 55.765000, 37.630000),
-(7, 'Lada Vesta', 'О901РС777', '77MN789012', 4.60, 'online', 55.740000, 37.620000),
-(8, 'Nissan Almera', 'Р234ТУ777', '77OP345678', 4.80, 'busy', 55.758000, 37.615000),
-(9, 'Chevrolet Cruze', 'Т567ФХ777', '77QR901234', 4.55, 'online', 55.745000, 37.608000),
-(10, 'Ford Focus', 'У890ЦЧ777', '77ST567890', 4.70, 'online', 55.753000, 37.622000);
+INSERT INTO drivers (user_id, car_model, car_number, license_number, status) VALUES
+    ((SELECT id FROM users WHERE login = 'driveruser1'), 'Hyundai Solaris', 'A111AA77', 'LIC-0001', 'online'),
+    ((SELECT id FROM users WHERE login = 'driveruser2'), 'Kia Rio', 'B222BB77', 'LIC-0002', 'online'),
+    ((SELECT id FROM users WHERE login = 'driveruser3'), 'Skoda Octavia', 'C333CC77', 'LIC-0003', 'busy'),
+    ((SELECT id FROM users WHERE login = 'driveruser4'), 'Toyota Camry', 'D444DD77', 'LIC-0004', 'online'),
+    ((SELECT id FROM users WHERE login = 'driveruser5'), 'Volkswagen Polo', 'E555EE77', 'LIC-0005', 'offline'),
+    ((SELECT id FROM users WHERE login = 'passenger1'), 'Lada Vesta', 'F666FF77', 'LIC-0006', 'online'),
+    ((SELECT id FROM users WHERE login = 'passenger2'), 'Renault Logan', 'G777GG77', 'LIC-0007', 'busy'),
+    ((SELECT id FROM users WHERE login = 'passenger3'), 'Ford Focus', 'H888HH77', 'LIC-0008', 'online'),
+    ((SELECT id FROM users WHERE login = 'passenger4'), 'Nissan Almera', 'I999II77', 'LIC-0009', 'online'),
+    ((SELECT id FROM users WHERE login = 'passenger5'), 'Chevrolet Aveo', 'J101JJ77', 'LIC-0010', 'offline');
 
--- =====================================================
--- Заказы (поездки)
--- =====================================================
-INSERT INTO orders (passenger_id, driver_id, pickup_lat, pickup_lng, pickup_address, destination_lat, destination_lng, destination_address, status, estimated_price, final_price, comment, created_at, completed_at) VALUES
-(1, 1, 55.751244, 37.618423, 'Красная площадь, 1', 55.755826, 37.617300, 'ул. Тверская, 15', 'completed', 350.00, 350.00, 'Нужно детское кресло', '2024-01-15 10:30:00', '2024-01-15 10:55:00'),
-(2, 2, 55.755826, 37.617300, 'ул. Тверская, 15', 55.742000, 37.610000, 'Парк Горького', 'completed', 420.00, 420.00, NULL, '2024-01-15 11:00:00', '2024-01-15 11:30:00'),
-(3, 3, 55.742000, 37.610000, 'Парк Горького', 55.760000, 37.625000, 'ВДНХ', 'completed', 550.00, 550.00, 'Музыка негромко', '2024-01-15 12:00:00', '2024-01-15 12:40:00'),
-(4, 4, 55.760000, 37.625000, 'ВДНХ', 55.748000, 37.605000, 'Киевский вокзал', 'completed', 480.00, 480.00, NULL, '2024-01-15 13:00:00', '2024-01-15 13:35:00'),
-(5, 5, 55.748000, 37.605000, 'Киевский вокзал', 55.765000, 37.630000, 'Сокольники', 'completed', 600.00, 600.00, 'Помощь с багажом', '2024-01-15 14:00:00', '2024-01-15 14:50:00'),
-(6, NULL, 55.765000, 37.630000, 'Сокольники', 55.740000, 37.620000, 'Таганская', 'searching', 450.00, NULL, NULL, '2024-01-15 15:00:00', NULL),
-(7, NULL, 55.740000, 37.620000, 'Таганская', 55.758000, 37.615000, 'Чистые пруды', 'accepted', 380.00, NULL, 'Срочно!', '2024-01-15 15:10:00', NULL),
-(8, 8, 55.758000, 37.615000, 'Чистые пруды', 55.745000, 37.608000, 'Октябрьская', 'in_progress', 400.00, NULL, NULL, '2024-01-15 15:20:00', NULL),
-(9, NULL, 55.745000, 37.608000, 'Октябрьская', 55.753000, 37.622000, 'Лубянка', 'created', 320.00, NULL, 'Жду 5 минут', '2024-01-15 15:30:00', NULL),
-(10, 10, 55.753000, 37.622000, 'Лубянка', 55.751244, 37.618423, 'Красная площадь, 1', 'cancelled', 350.00, NULL, 'Передумал', '2024-01-15 15:40:00', NULL);
+INSERT INTO rides (passenger_id, driver_id, pickup_address, destination_address, status, completed_at) VALUES
+    ((SELECT id FROM users WHERE login = 'passenger1'), NULL, 'Lenina 10', 'Tverskaya 5', 'searching', NULL),
+    ((SELECT id FROM users WHERE login = 'passenger2'), (SELECT id FROM drivers WHERE car_number = 'A111AA77'), 'Arbat 15', 'Mira 20', 'accepted', NULL),
+    ((SELECT id FROM users WHERE login = 'passenger3'), (SELECT id FROM drivers WHERE car_number = 'C333CC77'), 'Nevsky 1', 'Ligovsky 8', 'completed', NOW()),
+    ((SELECT id FROM users WHERE login = 'passenger4'), NULL, 'Pushkina 3', 'Sadovaya 17', 'searching', NULL),
+    ((SELECT id FROM users WHERE login = 'passenger5'), (SELECT id FROM drivers WHERE car_number = 'D444DD77'), 'Prospekt 12', 'Center Mall', 'accepted', NULL),
+    ((SELECT id FROM users WHERE login = 'passenger1'), (SELECT id FROM drivers WHERE car_number = 'G777GG77'), 'Airport', 'Hotel', 'completed', NOW()),
+    ((SELECT id FROM users WHERE login = 'passenger2'), NULL, 'Station', 'University', 'searching', NULL),
+    ((SELECT id FROM users WHERE login = 'passenger3'), (SELECT id FROM drivers WHERE car_number = 'H888HH77'), 'Park', 'Office', 'completed', NOW()),
+    ((SELECT id FROM users WHERE login = 'passenger4'), NULL, 'Home', 'Cinema', 'searching', NULL),
+    ((SELECT id FROM users WHERE login = 'passenger5'), (SELECT id FROM drivers WHERE car_number = 'I999II77'), 'Market', 'Airport', 'completed', NOW());
 
--- =====================================================
--- Платежи
--- =====================================================
-INSERT INTO payments (order_id, amount, payment_method, status, transaction_id) VALUES
-(1, 350.00, 'card', 'succeeded', 'txn_abc123'),
-(2, 420.00, 'card', 'succeeded', 'txn_def456'),
-(3, 550.00, 'wallet', 'succeeded', 'txn_ghi789'),
-(4, 480.00, 'card', 'succeeded', 'txn_jkl012'),
-(5, 600.00, 'cash', 'succeeded', 'txn_mno345'),
-(7, 380.00, 'card', 'pending', NULL),
-(8, 400.00, 'card', 'pending', NULL);
-
--- =====================================================
--- Отзывы
--- =====================================================
-INSERT INTO reviews (order_id, passenger_id, driver_id, rating, comment) VALUES
-(1, 1, 1, 5, 'Отличный водитель, вежливый!'),
-(2, 2, 2, 4, 'Всё хорошо, но немного долго'),
-(3, 3, 3, 5, 'Супер! Рекомендую'),
-(4, 4, 4, 4, 'Нормально'),
-(5, 5, 5, 5, 'Очень помог с багажом, спасибо!');
+COMMIT;

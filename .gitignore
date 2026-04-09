@@ -1,0 +1,7 @@
+build-debug/
+__pycache__/
+tests/__pycache__/
+*.pyc
+.ccache/
+core
+*.core

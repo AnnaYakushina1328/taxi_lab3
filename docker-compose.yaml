@@ -9,27 +9,38 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./data.sql:/docker-entrypoint-initdb.d/02-data.sql
+      - postgres-data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./data.sql:/docker-entrypoint-initdb.d/02-data.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U taxi -d taxi"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
-    restart: unless-stopped
+      retries: 10
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: taxi-pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@test.ru
-      PGADMIN_DEFAULT_PASSWORD: admin123
+  taxi-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    security_opt:
+      - seccomp=unconfined
     ports:
-      - "8080:80"
+      - "8080:8080"
     depends_on:
-      - postgres
-    restart: unless-stopped
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: taxi
+      DB_USER: taxi
+      DB_PASSWORD: taxi123
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 volumes:
-  postgres_data:
+  postgres-data:
