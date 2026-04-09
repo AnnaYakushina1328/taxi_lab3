@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: taxi-postgres
+    environment:
+      POSTGRES_DB: taxi
+      POSTGRES_USER: taxi
+      POSTGRES_PASSWORD: taxi123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./data.sql:/docker-entrypoint-initdb.d/02-data.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taxi -d taxi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: taxi-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@test.ru
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
